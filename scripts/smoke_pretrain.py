@@ -18,8 +18,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-    if not args.data_path:
-        raise SystemExit('Please set --data_path to ImageNet root (with train/).')
+    if not args.imagenet_hf and not args.data_path:
+        raise SystemExit('Please set --data_path to ImageNet root (with train/) or use --imagenet_hf.')
 
     device = torch.device(args.device)
     if device.type == 'cuda' and not torch.cuda.is_available():

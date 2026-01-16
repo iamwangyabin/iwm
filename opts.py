@@ -3,10 +3,12 @@ import argparse
 parser = argparse.ArgumentParser('JEPA/IWM pre-training', add_help=False)
 
 # dataset
-parser.add_argument('--dataset', default='imagenet', type=str)
 parser.add_argument('--data_path', default='', type=str, help='dataset path')
 parser.add_argument('--data_pct', type=float, default=1.0)
 parser.add_argument('--dataset_seed', type=int, default=42)
+parser.add_argument('--imagenet_hf', action='store_true', default=False, help='use Hugging Face ImageNet')
+parser.add_argument('--hf_dataset', default='ILSVRC/imagenet-1k', type=str, help='HF dataset name')
+parser.add_argument('--hf_cache_dir', default='', type=str, help='HF datasets cache dir')
 
 # run config
 parser.add_argument('--output_dir', default='./output', help='path where to save, empty for no saving')
@@ -14,10 +16,7 @@ parser.add_argument('--exp_name', default='', type=str)
 parser.add_argument('--print_freq', default=20, type=int)
 parser.add_argument('--eval_freq', default=1, type=int)
 parser.add_argument('--eval_list', type=int, nargs='*', default=[])
-parser.add_argument('--save_mode', type=str, default='best', choices=['best', 'every', 'none'])
 parser.add_argument('--seed', type=int, default=2048)
-parser.add_argument('--data_seed', type=int, default=None)
-parser.add_argument('--swanlab', action='store_true', default=False)
 parser.add_argument('--swanlab_project', type=str, default='CheXWorld')
 parser.add_argument('--swanlab_name', type=str, default='')
 
@@ -39,8 +38,6 @@ parser.add_argument('--pretrained', type=str, default='')
 
 # optimizer
 parser.add_argument('--betas', type=float, nargs=2, default=(0.9, 0.999))
-parser.add_argument('--optim', type=str, default='adamw')
-parser.add_argument('--momentum', type=float, default=0.9)
 parser.add_argument('--weight_decay', type=float, default=0.04)
 parser.add_argument('--weight_decay_end', type=float, default=0.4)
 parser.add_argument('--lr', type=float, default=None, metavar='LR')
@@ -61,9 +58,6 @@ parser.add_argument('--new_start', action='store_true', default=False)
 parser.add_argument('--start_epoch', default=0, type=int)
 parser.add_argument('--stop_epoch', default=None, type=int)
 parser.add_argument('--num_workers', default=10, type=int)
-parser.add_argument('--pin_mem', action='store_true')
-parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
-parser.set_defaults(pin_mem=True)
 
 # augment
 parser.add_argument('--norm_type', type=str, default='default')
@@ -91,9 +85,7 @@ parser.add_argument('--rel_pos_disable', action='store_true', default=False)
 parser.add_argument('--reverse_pred', action='store_true', default=False)
 
 # mask params
-parser.add_argument('--mask_ratio', default=0.75, type=float)
 parser.add_argument('--mask_type', type=str, default='multi_multiblock')
-parser.add_argument('--mae_mask_ratio', type=float, default=0.75)
 parser.add_argument('--mask_nenc', type=int, default=1)
 parser.add_argument('--mask_npred', type=int, default=4)
 parser.add_argument('--mask_min_keep', type=int, default=10)
@@ -102,7 +94,6 @@ parser.add_argument('--mask_rand_keep', action='store_true', default=False)
 parser.add_argument('--mask_merge', action='store_true', default=False)
 parser.add_argument('--enc_mask_scale', type=float, nargs=2, default=(0.85, 1.0))
 parser.add_argument('--pred_mask_scale', type=float, nargs=2, default=(0.15, 0.2))
-parser.add_argument('--extra_shuffle_mask', action='store_true', default=False)
 
 # loss + target
 parser.add_argument('--loss_type', type=str, default='l2')
