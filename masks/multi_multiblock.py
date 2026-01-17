@@ -172,10 +172,8 @@ class MaskCollator(object):
                 instance_masks_pred.extend(masks_p)
 
                 acceptable_regions = masks_C
-                try:
-                    if self.allow_overlap:
-                        acceptable_regions= None
-                except Exception as e:
+                if self.allow_overlap:
+                    acceptable_regions= None
 
                 mask, _ = self._sample_block_mask(e_size, acceptable_regions=acceptable_regions)
                 min_keep_enc = min(min_keep_enc, len(mask))
