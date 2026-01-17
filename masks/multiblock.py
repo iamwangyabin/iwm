@@ -163,10 +163,8 @@ class MaskCollator(object):
             collated_masks_pred.append(masks_p)
 
             acceptable_regions = masks_C
-            try:
-                if self.allow_overlap:
-                    acceptable_regions= None
-            except Exception as e:
+            if self.allow_overlap:
+                acceptable_regions= None
 
             masks_e = []
             for _ in range(self.nenc):
