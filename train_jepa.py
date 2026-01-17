@@ -27,6 +27,8 @@ def _to_float(value):
     return float(value)
 
 def _maybe_init_swanlab(args):
+    if misc.get_rank() != 0:
+        return None
     import swanlab
     import inspect
 
