@@ -17,7 +17,7 @@ parser.add_argument('--print_freq', default=20, type=int)
 parser.add_argument('--eval_freq', default=1, type=int)
 parser.add_argument('--eval_list', type=int, nargs='*', default=[])
 parser.add_argument('--seed', type=int, default=2048)
-parser.add_argument('--swanlab_project', type=str, default='CheXWorld')
+parser.add_argument('--swanlab_project', type=str, default='IWM')
 parser.add_argument('--swanlab_name', type=str, default='')
 
 # model
