@@ -1,5 +1,6 @@
 import os
 import random
+import warnings
 from torchvision import datasets
 from torch.utils.data import Dataset
 
@@ -56,8 +57,11 @@ class ImageNetHFPretrain(Dataset):
         item = self.ds[index]
         sample = item["image"]
         # Some HF ImageNet shards store grayscale images; force RGB for normalization.
-        if hasattr(sample, "mode") and sample.mode != "RGB":
-            sample = sample.convert("RGB")
+        # Also silence noisy EXIF warnings from PIL on a few corrupt files.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Corrupt EXIF data.*", category=UserWarning)
+            if hasattr(sample, "mode") and sample.mode != "RGB":
+                sample = sample.convert("RGB")
         if self.transform is not None:
             sample = self.transform(sample)
         return sample
