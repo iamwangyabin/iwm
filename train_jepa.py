@@ -12,7 +12,7 @@ from torch.nn.parallel import DistributedDataParallel
 
 import util.misc as misc
 from util.logger import AverageMeter
-from util.misc import NativeScalerWithGradNormCount as NativeScaler
+from util.misc import NativeScalerWithGradNormCount as NativeScaler, get_grad_norm_
 from util import add_weight_decay, cosine_scheduler, nested_to_gpu
 from data_utils import build_pretrain_dataset
 from models import init_jepa_model
@@ -54,6 +54,28 @@ def _maybe_init_swanlab(args):
             init_kwargs = {k: v for k, v in init_kwargs.items() if k in allowed}
     swanlab.init(**init_kwargs)
     return swanlab
+
+
+class FP32Scaler:
+    """Simple grad scaler for non-AMP training to match AMP call sites."""
+    def __call__(self, loss, optimizer, clip_grad=None, parameters=None, create_graph=False, update_grad=True):
+        loss.backward(create_graph=create_graph)
+        if update_grad:
+            if clip_grad is not None:
+                assert parameters is not None
+                norm = torch.nn.utils.clip_grad_norm_(parameters, clip_grad)
+            else:
+                norm = get_grad_norm_(parameters)
+            optimizer.step()
+        else:
+            norm = None
+        return norm
+
+    def state_dict(self):
+        return None
+
+    def load_state_dict(self, state_dict):
+        return None
 
 
 def main(args):
@@ -126,7 +148,7 @@ def main(args):
     if args.amp:
         loss_scaler = NativeScaler()
     else:
-        raise NotImplementedError
+        loss_scaler = FP32Scaler()
 
     misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler, new_start=args.new_start)
     
@@ -163,7 +185,7 @@ def main(args):
 
             maskA_meter.update(len(masks_enc[0][0]))
             maskB_meter.update(len(masks_pred[0][0]))
-            with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+            with torch.cuda.amp.autocast(enabled=args.amp, dtype=torch.bfloat16):
                 # loss = model(imgs, masks_enc, masks_pred, args.loss_type, args.target_last_k, args.target_norm_type, args.target_type)
                 outputs = model(data, args)
                 loss = outputs['loss']

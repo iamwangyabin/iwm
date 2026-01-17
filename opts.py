@@ -49,7 +49,8 @@ parser.add_argument('--warmup_epochs', type=int, default=40, metavar='N')
 parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--accum_iter', default=1, type=int)
 parser.add_argument('--clip_grad', type=float, default=None)
-parser.add_argument('--amp', action='store_true', default=False)
+parser.add_argument('--amp', dest='amp', action='store_true', default=True)
+parser.add_argument('--no_amp', dest='amp', action='store_false')
 parser.add_argument('--dist_backend', type=str, default='nccl')
 
 # IO and resume
