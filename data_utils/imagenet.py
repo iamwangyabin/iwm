@@ -55,6 +55,9 @@ class ImageNetHFPretrain(Dataset):
     def __getitem__(self, index):
         item = self.ds[index]
         sample = item["image"]
+        # Some HF ImageNet shards store grayscale images; force RGB for normalization.
+        if hasattr(sample, "mode") and sample.mode != "RGB":
+            sample = sample.convert("RGB")
         if self.transform is not None:
             sample = self.transform(sample)
         return sample
