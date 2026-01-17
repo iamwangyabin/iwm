@@ -84,7 +84,7 @@ def get_2d_sincos_pos_embed_relative(rel_pos, embed_dim, grid_size, cls_token=Fa
     flip_delta_j = flip_delta_j * grid_size
     grid_h = torch.arange(grid_size, dtype=rel_pos.dtype, device=rel_pos.device)
     grid_w = torch.arange(grid_size, dtype=rel_pos.dtype, device=rel_pos.device)
-    raw_grid_h, raw_grid_w = torch.meshgrid(grid_h, grid_w)
+    raw_grid_h, raw_grid_w = torch.meshgrid(grid_h, grid_w, indexing="ij")
 
     raw_grid_h = raw_grid_h + 0.5
     raw_grid_w = raw_grid_w + 0.5
@@ -129,7 +129,7 @@ def get_2d_sincos_pos_embed_relative_easy(rel_pos, embed_dim, grid_size, cls_tok
     flip_delta_j = flip_delta_j * grid_size
     grid_h = torch.arange(grid_size, dtype=rel_pos.dtype, device=rel_pos.device)
     grid_w = torch.arange(grid_size, dtype=rel_pos.dtype, device=rel_pos.device)
-    raw_grid_h, raw_grid_w = torch.meshgrid(grid_h, grid_w)
+    raw_grid_h, raw_grid_w = torch.meshgrid(grid_h, grid_w, indexing="ij")
 
     raw_grid_h = raw_grid_h + 0.5
     raw_grid_w = raw_grid_w + 0.5
@@ -204,7 +204,7 @@ def get_3d_sincos_pos_embed_relative_easy(rel_pos, embed_dim, grid_size, cls_tok
     grid_d = torch.arange(grid_size, dtype=rel_pos.dtype, device=rel_pos.device)
     grid_h = torch.arange(grid_size, dtype=rel_pos.dtype, device=rel_pos.device)
     grid_w = torch.arange(grid_size, dtype=rel_pos.dtype, device=rel_pos.device)
-    raw_grid_d, raw_grid_h, raw_grid_w = torch.meshgrid(grid_d, grid_h, grid_w)
+    raw_grid_d, raw_grid_h, raw_grid_w = torch.meshgrid(grid_d, grid_h, grid_w, indexing="ij")
 
     raw_grid_d = raw_grid_d + 0.5
     raw_grid_h = raw_grid_h + 0.5

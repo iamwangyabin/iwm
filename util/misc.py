@@ -52,8 +52,13 @@ def init_dist_pytorch(args):
     args.dist_url = 'env://'
     print('| distributed init (rank {}): {}, gpu {}'.format(
         args.rank, args.dist_url, args.rank), flush=True)
-    torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
-                                         world_size=args.world_size, rank=args.rank)
+    torch.distributed.init_process_group(
+        backend=args.dist_backend,
+        init_method=args.dist_url,
+        world_size=args.world_size,
+        rank=args.rank,
+        device_id=args.gpu,
+    )
     torch.distributed.barrier()
 
 class NativeScalerWithGradNormCount:
@@ -64,7 +69,7 @@ class NativeScalerWithGradNormCount:
     state_dict_key = "amp_scaler"
 
     def __init__(self):
-        self._scaler = torch.cuda.amp.GradScaler()
+        self._scaler = torch.amp.GradScaler("cuda")
 
     def __call__(self, loss, optimizer, clip_grad=None, parameters=None, create_graph=False, update_grad=True):
         self._scaler.scale(loss).backward(create_graph=create_graph)
@@ -144,4 +149,3 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler, new_start=False)
         if new_start:
             print('New Start from pretrained.')
             args.start_epoch = 0
-

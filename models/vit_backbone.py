@@ -96,7 +96,7 @@ class Attention(nn.Module):
         q, k, v = qkv[0], qkv[1], qkv[2]  # [B, num_heads, N, D]
 
         if self.use_sdpa:
-            with torch.backends.cuda.sdp_kernel():
+            with torch.nn.attention.sdpa_kernel():
                 x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.proj_drop_prob)
                 attn = None
         else:

@@ -187,7 +187,7 @@ def main(args):
 
             maskA_meter.update(len(masks_enc[0][0]))
             maskB_meter.update(len(masks_pred[0][0]))
-            with torch.cuda.amp.autocast(enabled=args.amp, dtype=torch.bfloat16):
+            with torch.amp.autocast("cuda", enabled=args.amp, dtype=torch.bfloat16):
                 # loss = model(imgs, masks_enc, masks_pred, args.loss_type, args.target_last_k, args.target_norm_type, args.target_type)
                 outputs = model(data, args)
                 loss = outputs['loss']
