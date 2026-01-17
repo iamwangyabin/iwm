@@ -336,34 +336,137 @@ def vit_predictor(**kwargs):
         mlp_ratio=4, qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6),
         **kwargs)
     return model
-#
-# def vit_tiny(patch_size=16, **kwargs):
-#     model = VisionTransformer(
-#         patch_size=patch_size, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4,
-#         qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
-#     return model
-#
-#
-# def vit_small(patch_size=16, **kwargs):
-#     model = VisionTransformer(
-#         patch_size=patch_size, embed_dim=384, depth=12, num_heads=6, mlp_ratio=4,
-#         qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
-#     return model
-#
-#
-# def vit_base(patch_size=16, **kwargs):
-#     model = VisionTransformer(
-#         patch_size=patch_size, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4,
-#         qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
-#     return model
-#
-#
-# def vit_large(patch_size=16, **kwargs):
-#     model = VisionTransformer(
-#         patch_size=patch_size, embed_dim=1024, depth=24, num_heads=16, mlp_ratio=4,
-#         qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
-#     return model
-#
+
+class VisionTransformer(nn.Module):
+    """ViT encoder backbone for JEPA/IWM."""
+    def __init__(
+        self,
+        img_size=224,
+        patch_size=16,
+        in_chans=3,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
+        mlp_ratio=4.0,
+        qkv_bias=True,
+        qk_scale=None,
+        drop_rate=0.0,
+        attn_drop_rate=0.0,
+        drop_path_rate=0.0,
+        norm_layer=nn.LayerNorm,
+        **kwargs,
+    ):
+        super().__init__()
+        self.patch_embed = PatchEmbed(
+            img_size=img_size,
+            patch_size=patch_size,
+            in_chans=in_chans,
+            embed_dim=embed_dim,
+        )
+        num_patches = self.patch_embed.num_patches
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim), requires_grad=False)
+        pos_embed = get_2d_sincos_pos_embed(embed_dim, int(num_patches**0.5), cls_token=False)
+        self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
+        self.blocks = nn.ModuleList([
+            Block(
+                dim=embed_dim,
+                num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                qk_scale=qk_scale,
+                drop=drop_rate,
+                attn_drop=attn_drop_rate,
+                drop_path=dpr[i],
+                norm_layer=norm_layer,
+            )
+            for i in range(depth)
+        ])
+        self.norm = norm_layer(embed_dim)
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+
+    def interpolate_pos_encoding(self, x, pos_embed):
+        npatch = x.shape[1]
+        N = pos_embed.shape[1]
+        B = pos_embed.shape[0]
+        if npatch == N:
+            return pos_embed
+        dim = x.shape[-1]
+        pos_embed = nn.functional.interpolate(
+            pos_embed.reshape(B, int(math.sqrt(N)), int(math.sqrt(N)), dim).permute(0, 3, 1, 2),
+            scale_factor=math.sqrt(npatch / N),
+            mode='bicubic',
+        )
+        pos_embed = pos_embed.permute(0, 2, 3, 1).view(B, -1, dim)
+        return pos_embed
+
+    def forward(self, x, masks=None, layer_results=False):
+        x = self.patch_embed(x)
+        pos_embed = self.interpolate_pos_encoding(x, self.pos_embed)
+
+        if masks is not None:
+            if not isinstance(masks, list):
+                masks = [masks]
+            B = x.shape[0]
+            x = apply_masks(x, masks)
+            pos_embed = apply_masks(pos_embed.repeat(B, 1, 1), masks)
+        x = x + pos_embed
+
+        if layer_results:
+            outputs = []
+            for blk in self.blocks:
+                x = blk(x)
+                outputs.append(x)
+            return outputs
+
+        for blk in self.blocks:
+            x = blk(x)
+        x = self.norm(x)
+        return x
+
+
+def vit_tiny(patch_size=16, **kwargs):
+    model = VisionTransformer(
+        patch_size=patch_size, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4,
+        qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
+
+
+def vit_small(patch_size=16, **kwargs):
+    model = VisionTransformer(
+        patch_size=patch_size, embed_dim=384, depth=12, num_heads=6, mlp_ratio=4,
+        qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
+
+
+def vit_base(patch_size=16, **kwargs):
+    model = VisionTransformer(
+        patch_size=patch_size, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4,
+        qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
+
+
+def vit_large(patch_size=16, **kwargs):
+    model = VisionTransformer(
+        patch_size=patch_size, embed_dim=1024, depth=24, num_heads=16, mlp_ratio=4,
+        qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
+
+
+def vit_huge(patch_size=16, **kwargs):
+    model = VisionTransformer(
+        patch_size=patch_size, embed_dim=1280, depth=32, num_heads=16, mlp_ratio=4,
+        qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
+
+
+def vit_giant(patch_size=16, **kwargs):
+    model = VisionTransformer(
+        patch_size=patch_size, embed_dim=1408, depth=40, num_heads=16, mlp_ratio=4,
+        qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
 
 VIT_EMBED_DIMS = {
     'vit_tiny': 192,
