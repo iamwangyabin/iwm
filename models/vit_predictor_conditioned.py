@@ -17,6 +17,8 @@ class VisionTransformerPredictorConditioned(VisionTransformerPredictor):
     """
     def __init__(self, policy_dim=4, policy_net_layers=3, unify_embed=False, cond_type='feat', **kwargs):
         super().__init__(**kwargs)
+        if cond_type == 'concat':
+            cond_type = 'feat'
         self.policy_dim = policy_dim
         self.cond_type = cond_type
         if policy_dim > 0:
