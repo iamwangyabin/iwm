@@ -20,7 +20,6 @@ from masks import build_mask_collator
 
 from opts import parser
 
-
 def _to_float(value):
     if isinstance(value, torch.Tensor):
         return value.item()
@@ -97,8 +96,6 @@ def main(args):
         num_replicas=args.world_size,
         rank=args.rank)
 
-
-
     # Collator generates encoder/predictor masks per batch.
     mask_collator = build_mask_collator(args)
     data_loader_train = torch.utils.data.DataLoader(
@@ -153,15 +150,13 @@ def main(args):
         loss_scaler = FP32Scaler()
 
     misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler, new_start=args.new_start)
-    
-    
+
     start_time = time.time()
     stop_epoch = args.stop_epoch if args.stop_epoch else args.epochs
     last_step = None
     for epoch in range(args.start_epoch, stop_epoch):
         epoch_start = time.time()
         data_loader_train.sampler.set_epoch(epoch)
-        # data_time = AverageMeter('Data Time', ":6.3f")
         batch_time = AverageMeter('Time', ':6.3f')
         loss_meter = AverageMeter(f'Loss', ':.4f')
         loss_intra_meter = AverageMeter(f'Loss_Intra', ':.4f')
@@ -171,7 +166,6 @@ def main(args):
         norm_meter = AverageMeter(f'Grad_Norm', ':.2f')
         var_meter = AverageMeter('Pred_Var', ':.2f')
         end = time.time()
-        # for data_iter_step, (imgs, masks_enc, masks_pred) in enumerate(data_loader_train):
         for data_iter_step, data in enumerate(data_loader_train):
             it = len(data_loader_train) * epoch + data_iter_step
             last_step = it
@@ -180,15 +174,12 @@ def main(args):
                 if param_group['weight_decay'] > 0:
                     param_group["weight_decay"] = wd_schedule[it]
             data = nested_to_gpu(data, device)
-            # imgs = imgs.to(device, non_blocking=True)
-            # masks_enc = [u.to(device, non_blocking=True) for u in masks_enc]
-            # masks_pred = [u.to(device, non_blocking=True) for u in masks_pred]
+
             masks_enc, masks_pred = data[-2], data[-1]
 
             maskA_meter.update(len(masks_enc[0][0]))
             maskB_meter.update(len(masks_pred[0][0]))
             with torch.amp.autocast("cuda", enabled=args.amp, dtype=torch.bfloat16):
-                # loss = model(imgs, masks_enc, masks_pred, args.loss_type, args.target_last_k, args.target_norm_type, args.target_type)
                 outputs = model(data, args)
                 loss = outputs['loss']
                 pred_var = outputs['pred_var']
@@ -199,7 +190,6 @@ def main(args):
                         parameters=model.parameters(), create_graph=False,
                         update_grad=update_grad)
             if update_grad:
-                # optimizer.zero_grad()
                 optimizer.zero_grad(set_to_none=True)
                 if args.pretrained == '':
                     model.module.update_target_encoder(momentum_schedule[it])
@@ -217,25 +207,18 @@ def main(args):
             ):
                 payload = {
                     "train/loss": _to_float(loss_value),
-                    "train/loss_avg": _to_float(loss_meter.avg),
                     "train/pred_var": _to_float(pred_var),
-                    "train/pred_var_avg": _to_float(var_meter.avg),
                     "train/mask_enc": _to_float(maskA_meter.val),
-                    "train/mask_enc_avg": _to_float(maskA_meter.avg),
                     "train/mask_pred": _to_float(maskB_meter.val),
-                    "train/mask_pred_avg": _to_float(maskB_meter.avg),
                     "train/lr": _to_float(lr_schedule[it]),
                     "train/weight_decay": _to_float(wd_schedule[it]),
                     "train/ema": _to_float(momentum_schedule[it]),
                 }
                 if grad_norm is not None:
                     payload["train/grad_norm"] = _to_float(grad_norm)
-                    payload["train/grad_norm_avg"] = _to_float(norm_meter.avg)
                 if 'loss_intra' in outputs:
                     payload["train/loss_intra"] = _to_float(outputs['loss_intra'])
                     payload["train/loss_extra"] = _to_float(outputs['loss_extra'])
-                    payload["train/loss_intra_avg"] = _to_float(loss_intra_meter.avg)
-                    payload["train/loss_extra_avg"] = _to_float(loss_extra_meter.avg)
                 swanlab.log(payload, step=it)
             end = time.time()
         
@@ -255,16 +238,7 @@ def main(args):
             epoch_payload = {
                 "time/epoch_sec": _to_float(epoch_time),
                 "train/epoch": epoch,
-                "train/epoch_loss_avg": _to_float(loss_meter.avg),
-                "train/epoch_pred_var_avg": _to_float(var_meter.avg),
-                "train/epoch_mask_enc_avg": _to_float(maskA_meter.avg),
-                "train/epoch_mask_pred_avg": _to_float(maskB_meter.avg),
             }
-            if norm_meter.count > 0:
-                epoch_payload["train/epoch_grad_norm_avg"] = _to_float(norm_meter.avg)
-            if loss_intra_meter.count > 0:
-                epoch_payload["train/epoch_loss_intra_avg"] = _to_float(loss_intra_meter.avg)
-                epoch_payload["train/epoch_loss_extra_avg"] = _to_float(loss_extra_meter.avg)
             if last_step is not None:
                 epoch_payload["train/epoch_lr"] = _to_float(lr_schedule[last_step])
                 epoch_payload["train/epoch_weight_decay"] = _to_float(wd_schedule[last_step])

@@ -84,9 +84,11 @@ class JEPA(nn.Module):
             else:
                 raise NotImplementedError
             return loss
+
         if self.list_mask:
             losses = [_loss(z1, h1) for z1, h1 in zip(z, h)]
             loss = sum(losses) / len(losses)
+
         else:
             loss = _loss(z, h)
         loss = AllReduce.apply(loss)

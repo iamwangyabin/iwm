@@ -131,7 +131,10 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler, new_start=False)
         args.resume = os.path.join(args.output_dir, 'checkpoint.pth')
         print('Auto Resume Activated!')
     if args.resume:
-        checkpoint = torch.load(args.resume, map_location='cpu')
+        try:
+            checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
+        except TypeError:
+            checkpoint = torch.load(args.resume, map_location='cpu')
         if 'model' in checkpoint:
             model_without_ddp.load_state_dict(checkpoint['model'])
         elif 'state_dict' in checkpoint:

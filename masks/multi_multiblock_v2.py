@@ -183,7 +183,6 @@ class MaskCollator(object):
 
         if self.max_keep is not None:
             min_keep_enc = min(min_keep_enc, self.max_keep)
-        # mask_pred has nenc * npred
         if self.rand_keep:
             collated_masks_pred = [[rand_select(cm, min_keep_pred) for cm in cm_list] for cm_list in collated_masks_pred]
         else:

@@ -9,26 +9,22 @@ This repository contains a clean, ImageNet-only pretraining pipeline based on JE
 - Dual-view masked prediction strategy
 - ViT backbones (`vit_tiny`/`vit_small`/`vit_base`/`vit_large`/`vit_huge`)
 
-## Data layout
-
-ImageNet should follow the standard `ImageFolder` layout:
-
-```
-/path/to/imagenet/
-  train/
-    n01440764/...
-    n01443537/...
-  val/            # optional, not used for pretraining
-```
-
-## Quick start
-
-See `PRETRAIN.md` for a full command example.
-
-## Smoke test
-
-Run a short forward-pass sanity check (CPU by default):
-
 ```bash
-python scripts/smoke_pretrain.py --data_path <PATH_TO_IMAGENET> --ssl_type iwm_dual_easy --steps 1
+
+
+torchrun --nproc_per_node=4 train_jepa.py \
+    --exp_name iwm_dual_vitb \
+    --ssl_type iwm_dual_easy \
+    --model vit_base \
+    --batch_size 64 \
+    --epochs 100 \
+    --warmup_epochs 40 \
+    --blr 1e-3 \
+    --weight_decay 0.04 \
+    --weight_decay_end 0.4 \
+    --ema 0.996 \
+    --ema_end 1.0 \
+    --amp \
 ```
+
+
