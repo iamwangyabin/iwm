@@ -15,6 +15,7 @@ class ImageNetHFPretrain(Dataset):
         data_pct=1.0,
         dataset_seed=42,
         cache_dir=None,
+        return_label=False,
     ):
         from datasets import load_dataset
 
@@ -24,6 +25,7 @@ class ImageNetHFPretrain(Dataset):
             ds = ds.shuffle(seed=dataset_seed).select(range(keep))
         self.ds = ds
         self.transform = transform
+        self.return_label = return_label
 
     def __len__(self):
         return len(self.ds)
@@ -39,4 +41,6 @@ class ImageNetHFPretrain(Dataset):
                 sample = sample.convert("RGB")
         if self.transform is not None:
             sample = self.transform(sample)
+        if self.return_label:
+            return sample, int(item["label"])
         return sample

@@ -8,6 +8,7 @@ import torch
 import torch.utils.data
 import torch.optim
 import torch.backends.cudnn as cudnn
+import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 
 import util.misc as misc
@@ -24,6 +25,15 @@ def _to_float(value):
     if isinstance(value, torch.Tensor):
         return value.item()
     return float(value)
+
+
+def _get_probe_images(samples, ssl_type):
+    if isinstance(samples, (list, tuple)):
+        if ssl_type == "iwm":
+            return samples[1]
+        if "iwm_dual" in ssl_type:
+            return samples[0]
+    return samples
 
 def _maybe_init_swanlab(args):
     if misc.get_rank() != 0:
@@ -98,9 +108,15 @@ def main(args):
 
     # Collator generates encoder/predictor masks per batch.
     mask_collator = build_mask_collator(args)
+    def collate_with_labels(batch):
+        samples, labels = zip(*batch)
+        collated_samples, masks_enc, masks_pred = mask_collator(list(samples))
+        labels = torch.utils.data.default_collate(labels)
+        return collated_samples, labels, masks_enc, masks_pred
+    collate_fn = collate_with_labels
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train,
-        collate_fn=mask_collator,
+        collate_fn=collate_fn,
         sampler=train_sampler,
         batch_size=args.batch_size,
         drop_last=True,
@@ -123,7 +139,20 @@ def main(args):
     model = DistributedDataParallel(model, static_graph=True)
     model_without_ddp = model.module
 
+    probe = torch.nn.Sequential(
+        torch.nn.LayerNorm(model_without_ddp.encoder.embed_dim),
+        torch.nn.Linear(model_without_ddp.encoder.embed_dim, args.probe_num_classes),
+    ).to(device)
+    probe = DistributedDataParallel(probe, static_graph=True)
+    probe_without_ddp = probe.module
+
     param_groups = add_weight_decay(model_without_ddp, args.weight_decay)
+    param_groups.append({
+        "params": probe.parameters(),
+        "weight_decay": args.probe_wd,
+        "lr": args.probe_lr,
+        "is_probe": True,
+    })
     optimizer = torch.optim.AdamW(param_groups, betas=args.betas)
     
     # Scale iterations per epoch to control total steps without changing epochs.
@@ -149,7 +178,16 @@ def main(args):
     else:
         loss_scaler = FP32Scaler()
 
-    misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler, new_start=args.new_start)
+    clip_parameters = list(model.parameters()) + list(probe.parameters())
+
+    misc.load_model(
+        args=args,
+        model_without_ddp=model_without_ddp,
+        optimizer=optimizer,
+        loss_scaler=loss_scaler,
+        new_start=args.new_start,
+        probe=probe_without_ddp,
+    )
 
     start_time = time.time()
     stop_epoch = args.stop_epoch if args.stop_epoch else args.epochs
@@ -157,6 +195,8 @@ def main(args):
     for epoch in range(args.start_epoch, stop_epoch):
         epoch_start = time.time()
         data_loader_train.sampler.set_epoch(epoch)
+        model.train()
+        probe.train()
         batch_time = AverageMeter('Time', ':6.3f')
         loss_meter = AverageMeter(f'Loss', ':.4f')
         loss_intra_meter = AverageMeter(f'Loss_Intra', ':.4f')
@@ -165,29 +205,49 @@ def main(args):
         maskB_meter = AverageMeter(f'Mask_Pred', ':.1f')
         norm_meter = AverageMeter(f'Grad_Norm', ':.2f')
         var_meter = AverageMeter('Pred_Var', ':.2f')
+        probe_loss_meter = AverageMeter('Probe_Loss', ':.4f')
+        probe_acc_meter = AverageMeter('Probe_Acc', ':.4f')
         end = time.time()
         for data_iter_step, data in enumerate(data_loader_train):
             it = len(data_loader_train) * epoch + data_iter_step
             last_step = it
             for i, param_group in enumerate(optimizer.param_groups):
+                if param_group.get("is_probe"):
+                    continue
                 param_group["lr"] = lr_schedule[it]
                 if param_group['weight_decay'] > 0:
                     param_group["weight_decay"] = wd_schedule[it]
             data = nested_to_gpu(data, device)
-
-            masks_enc, masks_pred = data[-2], data[-1]
+            samples, labels, masks_enc, masks_pred = data
+            labels = labels.long()
+            data = (samples, masks_enc, masks_pred)
 
             maskA_meter.update(len(masks_enc[0][0]))
             maskB_meter.update(len(masks_pred[0][0]))
+            probe_loss_value = None
+            probe_acc_value = None
             with torch.amp.autocast("cuda", enabled=args.amp, dtype=torch.bfloat16):
                 outputs = model(data, args)
-                loss = outputs['loss']
-                pred_var = outputs['pred_var']
+                if isinstance(outputs, dict):
+                    loss = outputs['loss']
+                    pred_var = outputs.get('pred_var', 0.0)
+                else:
+                    loss = outputs
+                    pred_var = 0.0
+                probe_images = _get_probe_images(samples, args.ssl_type)
+                with torch.no_grad():
+                    probe_tokens = model_without_ddp.encoder(probe_images)
+                    probe_feat = probe_tokens.mean(dim=1)
+                probe_logits = probe(probe_feat)
+                probe_loss = F.cross_entropy(probe_logits, labels)
+                loss = loss + args.probe_weight * probe_loss
+                probe_loss_value = probe_loss.detach().item()
+                probe_acc_value = (probe_logits.argmax(1) == labels).float().mean().detach().item()
             loss_value = loss.item()
             loss = loss / args.accum_iter
             update_grad = ((it+1) % args.accum_iter == 0)
             grad_norm = loss_scaler(loss, optimizer, clip_grad=args.clip_grad,
-                        parameters=model.parameters(), create_graph=False,
+                        parameters=clip_parameters, create_graph=False,
                         update_grad=update_grad)
             if update_grad:
                 optimizer.zero_grad(set_to_none=True)
@@ -196,7 +256,10 @@ def main(args):
                 norm_meter.update(grad_norm)
             batch_time.update(time.time() - end)
             loss_meter.update(loss_value)
-            if 'loss_intra' in outputs:
+            if probe_loss_value is not None:
+                probe_loss_meter.update(probe_loss_value)
+                probe_acc_meter.update(probe_acc_value)
+            if isinstance(outputs, dict) and 'loss_intra' in outputs:
                 loss_intra_meter.update(outputs['loss_intra'])
                 loss_extra_meter.update(outputs['loss_extra'])
             var_meter.update(pred_var)
@@ -216,7 +279,10 @@ def main(args):
                 }
                 if grad_norm is not None:
                     payload["train/grad_norm"] = _to_float(grad_norm)
-                if 'loss_intra' in outputs:
+                if probe_loss_value is not None:
+                    payload["train/probe_loss"] = _to_float(probe_loss_value)
+                    payload["train/probe_acc"] = _to_float(probe_acc_value)
+                if isinstance(outputs, dict) and 'loss_intra' in outputs:
                     payload["train/loss_intra"] = _to_float(outputs['loss_intra'])
                     payload["train/loss_extra"] = _to_float(outputs['loss_extra'])
                 swanlab.log(payload, step=it)
@@ -229,10 +295,11 @@ def main(args):
                             'epoch': epoch,
                             'args': args
                             }
-                torch.save(to_save, os.path.join(args.output_dir, f'epoch_{epoch}.pth.tar'))
-            misc.save_model(
-            args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-            loss_scaler=loss_scaler, epoch=epoch, is_best=False)
+                to_save['probe'] = probe_without_ddp.state_dict()
+            torch.save(to_save, os.path.join(args.output_dir, f'epoch_{epoch}.pth.tar'))
+        misc.save_model(
+        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+            loss_scaler=loss_scaler, epoch=epoch, is_best=False, probe=probe_without_ddp)
         epoch_time = time.time() - epoch_start
         if swanlab is not None:
             epoch_payload = {

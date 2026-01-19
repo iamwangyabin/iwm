@@ -7,6 +7,10 @@ parser.add_argument('--data_pct', type=float, default=1.0)
 parser.add_argument('--dataset_seed', type=int, default=42)
 parser.add_argument('--hf_dataset', default='ILSVRC/imagenet-1k', type=str, help='HF dataset name')
 parser.add_argument('--hf_cache_dir', default='', type=str, help='HF datasets cache dir')
+parser.add_argument('--probe_num_classes', type=int, default=1000)
+parser.add_argument('--probe_lr', type=float, default=1e-3)
+parser.add_argument('--probe_wd', type=float, default=0.0)
+parser.add_argument('--probe_weight', type=float, default=1.0)
 
 # run config
 parser.add_argument('--output_dir', default='./output', help='path where to save, empty for no saving')

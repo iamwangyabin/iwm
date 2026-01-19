@@ -105,7 +105,7 @@ def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
     total_norm = torch.norm(torch.stack([torch.norm(p.grad.detach(), norm_type).to(device) for p in parameters]), norm_type)
     return total_norm
 
-def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, is_best=False, with_epoch=False):
+def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, is_best=False, with_epoch=False, probe=None):
     output_dir = Path(args.output_dir)
     epoch_name = str(epoch)
     # if loss_scaler is not None:
@@ -120,13 +120,15 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, is
         'scaler': loss_scaler.state_dict(),
         'args': args,
     }
+    if probe is not None:
+        to_save['probe'] = probe.state_dict()
     torch.save(to_save, checkpoint_path)
     if is_best:
         best_path = output_dir / 'checkpoint-best.pth'  
         shutil.copy(checkpoint_path, best_path) 
 
 
-def load_model(args, model_without_ddp, optimizer, loss_scaler, new_start=False):
+def load_model(args, model_without_ddp, optimizer, loss_scaler, new_start=False, probe=None):
     if args.resume == '' and os.path.exists(os.path.join(args.output_dir, 'checkpoint.pth')):
         args.resume = os.path.join(args.output_dir, 'checkpoint.pth')
         print('Auto Resume Activated!')
@@ -141,6 +143,8 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler, new_start=False)
             model_without_ddp.load_state_dict(checkpoint['state_dict'])
         else:
             raise Exception('No State Dict!')
+        if probe is not None and 'probe' in checkpoint:
+            probe.load_state_dict(checkpoint['probe'])
         print("Resume checkpoint %s" % args.resume)
 
         if 'optimizer' in checkpoint and 'epoch' in checkpoint and not (hasattr(args, 'eval') and args.eval):

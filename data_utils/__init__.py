@@ -20,5 +20,6 @@ def build_pretrain_dataset(args, ssl_type):
         split='train',
         data_pct=args.data_pct,
         dataset_seed=args.dataset_seed,
-        cache_dir=cache_dir
+        cache_dir=cache_dir,
+        return_label=True,
     )
