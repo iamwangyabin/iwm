@@ -279,9 +279,8 @@ def main(args):
                 }
                 if grad_norm is not None:
                     payload["train/grad_norm"] = _to_float(grad_norm)
-                if probe_loss_value is not None:
-                    payload["train/probe_loss"] = _to_float(probe_loss_value)
-                    payload["train/probe_acc"] = _to_float(probe_acc_value)
+                payload["train/probe_loss_avg"] = _to_float(probe_loss_meter.avg)
+                payload["train/probe_acc_avg"] = _to_float(probe_acc_meter.avg)
                 if isinstance(outputs, dict) and 'loss_intra' in outputs:
                     payload["train/loss_intra"] = _to_float(outputs['loss_intra'])
                     payload["train/loss_extra"] = _to_float(outputs['loss_extra'])
