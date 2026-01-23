@@ -10,6 +10,7 @@ import torch.optim
 import torch.backends.cudnn as cudnn
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
+from tqdm.auto import tqdm
 
 import util.misc as misc
 from util.logger import AverageMeter
@@ -208,7 +209,15 @@ def main(args):
         probe_loss_meter = AverageMeter('Probe_Loss', ':.4f')
         probe_acc_meter = AverageMeter('Probe_Acc', ':.4f')
         end = time.time()
-        for data_iter_step, data in enumerate(data_loader_train):
+        data_iter = tqdm(
+            enumerate(data_loader_train),
+            total=len(data_loader_train),
+            desc=f"Epoch {epoch + 1}/{stop_epoch}",
+            dynamic_ncols=True,
+            leave=False,
+            disable=misc.get_rank() != 0,
+        )
+        for data_iter_step, data in data_iter:
             it = len(data_loader_train) * epoch + data_iter_step
             last_step = it
             for i, param_group in enumerate(optimizer.param_groups):
@@ -268,6 +277,11 @@ def main(args):
                 (data_iter_step + 1) % args.print_freq == 0
                 or data_iter_step == len(data_loader_train) - 1
             ):
+                data_iter.set_postfix(
+                    loss=f"{loss_value:.4f}",
+                    lr=f"{lr_schedule[it]:.2e}",
+                    refresh=False,
+                )
                 payload = {
                     "train/loss": _to_float(loss_value),
                     "train/pred_var": _to_float(pred_var),
