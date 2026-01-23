@@ -315,11 +315,15 @@ def build_world_model_dual_transform(args):
     aug_trans_param = build_parameterized_aug(args, post_trans)
     args.policy_dim = aug_trans_param.action_dim
     trans_cls = DualTransformEasy if 'easy' in args.ssl_type else DualTransform
-    return trans_cls(
+    kwargs = dict(
         global_scale=args.extra_global_scale,
         post_trans=post_trans,
         aug_trans=aug_trans,
         aug_trans_param=aug_trans_param,
-        min_overlap=args.min_overlap,
-        flip_prob=args.flip_prob
     )
+    if trans_cls is DualTransformEasy:
+        kwargs.update(
+            min_overlap=args.min_overlap,
+            flip_prob=args.flip_prob,
+        )
+    return trans_cls(**kwargs)
