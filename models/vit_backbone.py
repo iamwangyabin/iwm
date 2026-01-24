@@ -298,8 +298,7 @@ class VisionTransformerPredictor(nn.Module):
                                                         int(self.num_patches ** .5)) #[B, L, H]
                 pos_embs = self.predictor_pos_mlp(pos_embs.float())
         else:
-            raise NotImplementedError
-            # pos_embs = self.predictor_pos_embed.repeat(B, 1, 1)
+            pos_embs = self.predictor_pos_embed.repeat(B, 1, 1)
         # -- concat mask tokens to x
         pos_embs = apply_masks(pos_embs, masks) #[npred*B]
         if not is_mmb:
