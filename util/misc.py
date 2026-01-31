@@ -138,11 +138,18 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler, new_start=False,
         except TypeError:
             checkpoint = torch.load(args.resume, map_location='cpu')
         if 'model' in checkpoint:
-            model_without_ddp.load_state_dict(checkpoint['model'])
+            load_result = model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
         elif 'state_dict' in checkpoint:
-            model_without_ddp.load_state_dict(checkpoint['state_dict'])
+            load_result = model_without_ddp.load_state_dict(checkpoint['state_dict'], strict=False)
         else:
             raise Exception('No State Dict!')
+        if load_result is not None:
+            missing = getattr(load_result, "missing_keys", [])
+            unexpected = getattr(load_result, "unexpected_keys", [])
+            if missing:
+                print("Missing keys when loading:", missing)
+            if unexpected:
+                print("Unexpected keys when loading:", unexpected)
         if probe is not None and 'probe' in checkpoint:
             probe.load_state_dict(checkpoint['probe'])
         print("Resume checkpoint %s" % args.resume)
