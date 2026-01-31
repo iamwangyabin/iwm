@@ -180,7 +180,6 @@ def main(args):
         args.min_lr,
         args.epochs,
         iters_per_epoch,
-        warmup_epochs=args.warmup_epochs,
         start_warmup_value=args.start_lr,
     )
 
