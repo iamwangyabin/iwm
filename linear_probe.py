@@ -7,6 +7,7 @@ import torch.distributed as dist
 import torch.backends.cudnn as cudnn
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
+from tqdm.auto import tqdm
 
 from opts import parser as base_parser
 from models import vit_backbone
@@ -193,7 +194,15 @@ def main(args):
         loss_meter = AverageMeter("Loss", ":.4f")
         acc1_meter = AverageMeter("Acc@1", ":.2f")
         acc5_meter = AverageMeter("Acc@5", ":.2f")
-        for step, (images, labels) in enumerate(data_loader_train):
+        train_iter = tqdm(
+            enumerate(data_loader_train),
+            total=len(data_loader_train),
+            desc=f"Epoch {epoch + 1}/{args.epochs}",
+            dynamic_ncols=True,
+            leave=False,
+            disable=not is_main_process(args),
+        )
+        for step, (images, labels) in train_iter:
             it = epoch * iters_per_epoch + step
             for param_group in optimizer.param_groups:
                 param_group["lr"] = lr_schedule[it]
@@ -220,6 +229,13 @@ def main(args):
             loss_meter.update(loss.item(), images.size(0))
             acc1_meter.update(acc1.item(), images.size(0))
             acc5_meter.update(acc5.item(), images.size(0))
+            if is_main_process(args) and (step + 1) % args.print_freq == 0:
+                train_iter.set_postfix(
+                    loss=f"{loss_meter.avg:.4f}",
+                    acc1=f"{acc1_meter.avg:.2f}",
+                    lr=f"{optimizer.param_groups[0]['lr']:.2e}",
+                    refresh=False,
+                )
 
         if args.distributed:
             loss_meter.synchronize_between_processes()
@@ -258,7 +274,15 @@ def validate(args, encoder, probe, data_loader, device):
     acc5_meter = AverageMeter("Acc@5", ":.2f")
 
     with torch.no_grad():
-        for images, labels in data_loader:
+        val_iter = tqdm(
+            data_loader,
+            total=len(data_loader),
+            desc="Val",
+            dynamic_ncols=True,
+            leave=False,
+            disable=not is_main_process(args),
+        )
+        for images, labels in val_iter:
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True).long()
             feats = encoder(images).mean(dim=1)
@@ -268,6 +292,12 @@ def validate(args, encoder, probe, data_loader, device):
             loss_meter.update(loss.item(), images.size(0))
             acc1_meter.update(acc1.item(), images.size(0))
             acc5_meter.update(acc5.item(), images.size(0))
+            if is_main_process(args):
+                val_iter.set_postfix(
+                    loss=f"{loss_meter.avg:.4f}",
+                    acc1=f"{acc1_meter.avg:.2f}",
+                    refresh=False,
+                )
 
     if args.distributed:
         loss_meter.synchronize_between_processes()
@@ -298,3 +328,5 @@ if __name__ == "__main__":
   #   --epochs 100 \
   #   --probe_lr 1e-3 \
   #   --hf_dataset ILSVRC/imagenet-1k
+
+# python linear_probe.py --model vit_base --batch_size 256 --epochs 100 --probe_lr 1e-3 --pretrained /path/to/checkpoint.pth
